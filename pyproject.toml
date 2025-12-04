@@ -1,0 +1,37 @@
+[tool.poetry]
+name = "safesight"
+version = "0.1.0"
+description = "Real-time home safety detection using YOLO, SAM, MiDaS, and LLM"
+authors = ["Your Name <you@example.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{ include = "src" }]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+# Vision / Détection
+torch = { version = "^2.1.0", extras = ["cuda11x"] }  # adapte selon ton GPU ou CPU
+torchvision = "^0.16.0"
+timm = "^0.9.8"
+opencv-python = "^4.8.0"
+ultralytics = "^8.0.118"    # YOLOv8
+
+# LLM / Transformers
+transformers = ">=4.36.2,<4.38"
+
+
+# Utilitaires
+pyyaml = "^6.0"
+python-dotenv = "^1.0.0"
+numpy = "^1.26.0"
+
+[tool.poetry.group.dev.dependencies]
+black = "^24.10.0"
+isort = "^6.0.0"
+flake8 = "^6.1.0"
+
+[build-system]
+requires = ["poetry-core>=1.6.0"]
+build-backend = "poetry.core.masonry.api"

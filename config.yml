@@ -6,12 +6,12 @@ pipeline:
   device: "cuda"  # ou "cpu"
   frame_resize: [640, 480]  # optionnel, pour YOLO/SAM
 
-models:
-  yolo:
-    path: "models/yolov8n-seg.pt"  # modèle fine-tuné
+detection:
+    model_path: "models/yolov8n-seg.pt"  # modèle fine-tuné
     confidence_threshold: 0.3
-  depth:
-    model_path: "models/midas_v21_384.pt"
+
+depth:
+  model_path: "models/midas_v21_384.pt"
 
 classes:
   - cable_electrique
@@ -23,6 +23,6 @@ classes:
   - coin_meuble
 
 llm:
-  model_name: "Qwen/Qwen2-0.5B-Instruct"
+  model_name: "gemini-2.5-flash"
   max_tokens: 200
   temperature: 0.2

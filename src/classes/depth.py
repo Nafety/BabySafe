@@ -45,7 +45,7 @@ class DepthEstimator:
     def __init__(self, config=None):
         # utilise config centralisée pour init
         device = config.pipeline_cfg.get('device', "cuda")
-        midas_path = config.midas_path
+        midas_path = config.depth_cfg.get('model_path')
         self.model = MiDaSDepthEstimator(model_path=midas_path,device=device)
 
     def estimate(self, image):

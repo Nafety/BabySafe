@@ -1,88 +1,103 @@
 from transformers import AutoTokenizer, AutoModelForCausalLM
+import os
+import json
+
+# installer le SDK Gemini : pip install google‑genai
+from google import genai
+import json
+import re
+
+def parse_llm_json(text):
+    # Supprime les ```json ... ``` ou """ ... """
+    text = text.strip()
+    text = re.sub(r"^```json\s*", "", text)
+    text = re.sub(r"```$", "", text)
+    text = re.sub(r'^"""', '', text)
+    text = re.sub(r'"""$', '', text)
+    
+    # Retire les retours à la ligne superflus
+    text = text.strip()
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        print("Error parsing JSON from LLM:", e)
+        print("Raw LLM output:", text)
+        return None
 
 class DangerScorerLLM:
-    def __init__(self, model_name=None, device=None, max_tokens=200, temperature=0.7):
+    def __init__(self, api_key=None, model_name="gemini-2.5-flash", temperature=0.7):
+        self.api_key = api_key
         self.model_name = model_name
-        self.device = device
-        self.max_tokens = max_tokens
         self.temperature = temperature
-
-        # Tokenizer et modèle causal
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(self.model_name).to(self.device)
-
-        # Pour certains modèles comme GPT2
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
+        if self.api_key is None:
+            raise ValueError("api_key required for Gemini API usage")
+        self.client = genai.Client(api_key=self.api_key)
 
     def assess(self, detections, masks, depth_map):
         prompt = self._build_prompt(detections, masks, depth_map)
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-        outputs = self.model.generate(
-            **inputs,
-            max_new_tokens=self.max_tokens,
-            pad_token_id=self.tokenizer.eos_token_id,
-            temperature=self.temperature,
-            do_sample=True,
-            top_p=0.9
+        print("Prompt sent to LLM:", prompt)
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=prompt,
         )
-        text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        # garder seulement après le marqueur
-        if "=== RESPONSE START ===" in text:
-            text = text.split("=== RESPONSE START ===")[-1].strip()
+        text = response.text.strip()
+        print("LLM Response:", text)
+        try:
+            result = parse_llm_json(text)
+        except json.JSONDecodeError as e:
+            print("Error parsing JSON from LLM:", e)
+            return None
 
-        print("LLM Prompt:\n", prompt)
-        print("LLM Response:\n", text)
-        return text
+        return result
 
     def _build_prompt(self, detections, masks, depth_map):
-        prompt = (
-            "You are an assistant analyzing objects for child safety.\n"
-            "Use object positions, confidence, and depth information to determine risk.\n"
-            "Objects that are closer to the child are more dangerous if they are harmful.\n\n"
-            "Objects in the scene:\n"
-        )
+        # Construire un prompt demandant du JSON valide
+        prompt = {
+            "objects": []
+        }
         for det, mask in zip(detections, masks):
             x1, y1, x2, y2 = det['bbox']
             depth_region = depth_map[y1:y2, x1:x2]
             mean_depth = float(depth_region.mean()) if depth_region.size > 0 else 0.0
-            prompt += (
-                f"- {det['label']}, position {det['bbox']}, confidence {det['conf']:.2f}, "
-                f"mean_depth {mean_depth:.2f}\n"
-            )
+            prompt["objects"].append({
+                "label": det['label'],
+                "bbox": det['bbox'],
+                "confidence": round(det['conf'], 2),
+                "mean_depth": round(mean_depth, 3)
+            })
 
-        # Exemple concret à suivre
-        prompt += (
-            "\nOutput instructions:\n"
-            "For each object, output ONLY in the following format, without repeating the prompt:\n"
-            "- Object: <label>\n"
-            "  Danger: <low/medium/high>\n"
-            "  Recommendation: <one short sentence>\n\n"
-            "Example input:\n"
-            "- fork, position [30, 270, 140, 400], confidence 0.8, mean_depth 0.5\n"
-            "Example output:\n"
-            "- Object: fork\n"
-            "  Danger: high\n"
-            "  Recommendation: Keep out of reach of child\n\n"
-            "Now analyze the objects above and output strictly in the same format.\n"
+        instruction = (
+            "You are in charge of one or multiple babies and you are supervising them and make sure they are all safe:\n"
+            "For each object in 'objects', output a JSON with exactly this schema:\n"
+            "{\n"
+            "  \"objects\": [\n"
+            "    {\"label\": str, \"danger\": \"low\"|\"medium\"|\"high\", \"recommendation\": str},\n"
+            "    ...\n"
+            "  ]\n"
+            "}\n"
+            "Choose danger level taking into account mean_depth (closer to any baby = more dangerous) and object type.\n"
+            "Return only the JSON, no extra text."
         )
 
-        # MARQUEUR de début de réponse
-        prompt += "\n=== RESPONSE START ===\n"
+        full_prompt = {
+            "scene": prompt,
+            "instruction": instruction
+        }
 
-        return prompt
+        return json.dumps(full_prompt)
+
 
 class DangerScorer:
     def __init__(self, config=None):
         model_name = config.llm_cfg.get('model_name')
         temperature = config.llm_cfg.get('temperature', 0.7)
-        device = config.pipeline_cfg.get('device', "cuda")
-        max_tokens = config.llm_cfg.get('max_tokens', 200)
+        api_key = config.llm_cfg.get('api_key', None)
+        
         self.llm = DangerScorerLLM(
             model_name=model_name,
-            device=device,
-            max_tokens=max_tokens,
-            temperature=temperature
+            temperature=temperature,
+            api_key=api_key
         )
 
     def score(self, detections, masks, depth_map):

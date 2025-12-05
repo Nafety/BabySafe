@@ -3,3 +3,4 @@ libs/
 outputs/
 poetry.lock
 __pycache__/
+.env

@@ -58,7 +58,7 @@ def main():
             for det, mask in zip(detections, masks):
                 obj_label = det['label']
                 # Vérifie si objet présent dans le danger report
-                obj_info = next((o for o in danger_report.get("objects", []) if o["object"] == obj_label), None)
+                obj_info = next((o for o in danger_report.get("objects", []) if o.get("label") == obj_label),None)
                 if obj_info is None:
                     continue
 
@@ -80,7 +80,7 @@ def main():
         report_text = ""
         if danger_report:
             for obj in danger_report.get("objects", []):
-                report_text += f"{obj['object']}: {obj['danger']} - {obj['recommendation']}\n"
+                report_text += f"{obj['label']}: {obj['danger']} - {obj['recommendation']}\n"
         report_panel = np.zeros((h, 300, 3), dtype=np.uint8)
         for i, line in enumerate(report_text.split("\n")):
             cv2.putText(report_panel, line, (5, 20 + i*20),
